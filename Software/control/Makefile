@@ -1,11 +1,11 @@
 PRG            = control_code
 OBJ            = $(PRG).o
 
-MCU_TARGET     = atmega16u4
-MCU_CODE       = m16u4
+MCU_TARGET     = atmega32u4
+MCU_CODE       = m32u4
 OPTIMIZE       = -O2    # options are 1, 2, 3, s
 CC             = avr-gcc
-F_CPU          = 8000000UL
+F_CPU          = 16000000UL
 
 override CFLAGS       = -g -Wall $(OPTIMIZE) -mmcu=$(MCU_TARGET) $(DEFS) -DF_CPU=$(F_CPU)
 override LDFLAGS      = -Wl,-Map,$(PRG).map
