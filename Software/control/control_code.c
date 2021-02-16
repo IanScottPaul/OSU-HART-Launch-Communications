@@ -34,14 +34,26 @@ void CONTROL_GPIO_INIT();
 
 uint8_t main(){	
 	////Program Initialization////
-		//initialize GPIO
-		uint8_t state = state_idle;
-		//INIT SPI
-		SPRC = 0b01010111;
-		SPSR = 0b00000000;
-		//SPDR is data register
-		//
-		//INIT TIMERS
+	//START OF MAIN FUNCTION VARIABLE DECLARIATIONS //
+		uint8_t state = state_idle;		// state determines the current state of the program, use state macros. 
+	// END OF MAIN FUNCTION VARIABLE DECLARIATIONS  //
+	//BEGIN SPI INIT
+		////SPRC////[DS:17.2.1]
+		//Interupts disabled, SPI enabled, MSB first, Master mode
+		//Low clk idle, fosh/64
+		SPRC = 0b01010111;	//every bit in this register can be written 	
+		SPSR = 0b00000000;	//only bit zero can be written in this register, if set it doubles spi clock frequency. 
+		//SPDR is data register, write data to it to transmit, read it twice to recieve data. 
+	//END SPI INIT
+	//BEGIN GIPO INIT
+		//See system hardware documentation for GPIO connections	
+		//DDRX is data direction. 1 is output, 0 is input [DS:10.2]
+		//PORTX will set the value to output, or the pullmode of the input. 1 is up 0 is down. 
+		//PINX can be used to read the value of the input pins of X
+		DDRC |= 
+		DDRB = 0b00000111;	//PB6 input for the arm switch, PB[2:0] output for SPI (This is forced by SPI but don't override)
+	     	//PORT B is X, ARM, X, X, MISO, MOSI, SCK, NSS	
+	//END GPIO INIT
 	while(1){			//Endless while loop
 		//STATE MACHINE
 		//RF WATCHDOG
