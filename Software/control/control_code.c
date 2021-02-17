@@ -25,7 +25,7 @@
 //////////////////////////////////////////////////
 ////INCLUDED LIBRARIES////
 #include <avr/io.h>
-
+#include <stdbool.h>
 ////STATE MACROS////
 #define STATE_IDLE 	0
 #define STATE_ESABLISH	1
@@ -55,12 +55,13 @@
 
 
 ////FUCNTION DECLARATIONS////
-void CONTROL_GPIO_INIT();
-
-////INTERRUPT VECTORS////
-
-
-
+void tx_when_ready(uint8_t, char, char, char, char);
+void set_mode_tx();
+void set_mode_rx();
+void read_fifio(char*);
+bool poll_comm_en();
+bool poll_arm_sw();
+bool poll_launch_button();
 
 uint8_t main(){	
 	////Program Initialization////
@@ -71,16 +72,13 @@ uint8_t main(){
 			//address[7] is WNR, adsress[6:0] are the actual address bits. 
 			//The two critical addresses are 0x00 for FIFO, and 0x01 for the Operation mode register REGOPMODE	
 		uint8_t mode;
+		bool communications_enabled 	= false;
+		bool communications_established = false;
+		bool arm_sw_debounced		= false;
+		bool system_armed		= false;
+		bool launch_button_debounced 	= false;
 	// END OF MAIN FUNCTION VARIABLE DECLARIATIONS  //
-///////////BEGIN SPI INIT////////////////////////////////////////////////////////////////
-		////SPRC////[DS:17.2.1]
-		//Interupts disabled, SPI enabled, MSB first, Master mode
-		//Low clk idle, fosh/64
-		SPRC = 0b01010111;	//every bit in this register can be written 	
-		SPSR = 0b00000000;	//only bit zero  
-		//SPDR is data register, write data to it to transmit, read it twice to recieve data. 
-//////////END SPI INIT
-//////////BEGIN GIPO INIT/////////////////////////
+/////////BEGIN GIPO INIT/////////////////////////
 						//See system hardware documentation for GPIO connection
 						//DDRX is data direction. 1 is output, 0 is input [DS:10.2]
 						//PORTX will set the value to output, or the pullmode of the input. 1 is up 0 is down. 
@@ -90,45 +88,53 @@ uint8_t main(){
 		DDRB 	= 0b00000111;	//PB6 input for the arm switch, PB[2:0] output for SPI 
 	    	//IOPORT B is X, ARM, X, X, MISO, MOSI, SCK, NSS
 		PORTC	= (1<<LAUNCH_BUTTON);	// set launch button to be pullup, RESET SENSE to be z 
-		PORTB 	= (1<<ARM_SW);		// set arm sw to be pullup, write 0 to all spi pins
+		PORTB 	= ((1<<ARM_SW)|(1<<NSS));// set arm sw to be pullup, write pull not slave select high
 	       	PORTF	= 0b11111100;		//just in case that statements ends up in the ignition, set fire to high.
 //////////END GPIO INIT///////////////////////////
-		//init timer?
+///////////BEGIN SPI INIT////////////////////////////////////////////////////////////////
+		////SPRC////[DS:17.2.1]
+		//Interupts disabled, SPI enabled, MSB first, Master mode
+		//Low clk idle, fosh/64
+		SPRC = 0b01010010;	//every bit in this register can be written 	
+		SPSR = 0b00000000;	//only bit zero can be written 
+		//SPDR is data register, write data to it to transmit, read it twice to recieve data. 
+//////////END SPI INIT
+	//init timer?
 		//
 	//begin endless loop
 	while(1){						//Endless while loop
 		switch(state){	//switch case statements for state machine control
 			case(STATE_IDLE): 		//in the idle state
-				if(communications_enabled();){	//if the communications enable switch is flipped
+				if(communications_enabled()){	//if the communications enable switch is flipped
 					state = STATE_ESABLISH;	//change state to esablish communications
 				}//if comm deb
 				else{ state = STATE_IDLE;	//hold state as IDLE;
 				}//else comm deb
 			break;
 		case(STATE_ESABLISH):
-				if(communications_established();)	{state = STATE_READY;}//if comm est
+				if(communications_established)	{state = STATE_READY;}//if comm est
 				else					{state = STATE_IDLE;}//else comm est
 			break;
 		case(STATE_READY):
-				if(arm_sw_debounced();)		{state = STATE_ARMING;}//IF ARM SW DEB
+				if(arm_sw_debounced)		{state = STATE_ARMING;}//IF ARM SW DEB
 				else				{STATE = STATE_READY;}//else arm sw deb
 			break;
 		case(STATE_ARMING):
-				if(system_armed();)		{STATE = STATE_ARMED!;}//if armed
+				if(system_armed)		{STATE = STATE_ARMED!;}//if armed
 				else				{state = STATE_ARMING;}//else armed
 			break;	
 		case(STATE_ARMED!):
-				if(system_unarmed();)			{state = STATE_ESABLISH;}//IF SYS UNARMED
-				else if (launch_button_debounced();)	{state = STATE_FIREING;}
+				if(system_unarmed)			{state = STATE_ESABLISH;}//IF SYS UNARMED
+				else if (launch_button_debounced)	{state = STATE_FIREING;}
 				else 					{state = STATE_ARMED!;}
 			break;
 		case(STATE_FIREING):
-				if(fire_ackd();)	{state = STATE_FIRED;}//if fire ackd
+				if(fire_ackd)	{state = STATE_FIRED;}//if fire ackd
 				else			{ STATE = STATE_FIREING;}
 			break;
 		case(STATE_FIRED!):
-				if(system_unarmed();)		{state = STATE_ESABLISH;}//IF SYS UNARMED
-				else if (comms_disabled();)	{state = STATE_IDLE;}
+				if(system_unarmed())		{state = STATE_ESABLISH;}//IF SYS UNARMED
+				else if (comms_disabled())	{state = STATE_IDLE;}
 				else 				{state = STATE_FIRED!;}
 			break;
 		default: state = STATE_IDLE;
@@ -138,21 +144,47 @@ uint8_t main(){
 		//CODE HERE IS STATE DEPENDENT
 			case(STATE_IDLE): 
 			//idle functionality
+			communications_enabled = poll_comm_sw();
 			break;
 		case(STATE_ESABLISH):
 			//establish functionality
+			set_mode_tx();
+			tx_when_ready(0x80,'t','e','s','t');// 0b10000000 is write mode for FIFO, hex 0x80
+			_delay_ms(50);
+			set_mode_rx();
+			_delay_ms(100);//time for message to tx, be decoded, and sent back 
+			read_fifo(&message);
+			if(strcmp(&message, &msg_tst_1)){
+				comms_established = true;
+			}
+			else{
+				comms_established = false;
+			}
 			break;
 		case(STATE_READY):
+			arm_sw_debounced = poll_arm_sw();
 			//ready functionality
 			break;
 		case(STATE_ARMING):
 			//arming functionality
-			break;	
+			set_mode_tx();
+			tx_when_ready(0x80,'A','R','M''1');
+			_delay_ms(50);// time to send 
+			set_mode_rx();
+			read_fifo(&message);
+			if(strcmp(&message, &msg_arm1)){
+				system_armed = true;
+			}
+			else{
+				system_armed = false;
+			}
+break;	
 		case(STATE_ARMED!):
-			//af
+			launch_button_debounced = poll_launch_button();
 			break;
 		case(STATE_FIREING):
-			//fireing functionality
+			set_mode_tx();
+			tx_when_ready(0x80,'F','I','R','E');
 			break;
 		case(STATE_FIRED!):
 			//post fire functionality
