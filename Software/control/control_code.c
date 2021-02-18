@@ -4,7 +4,7 @@
 // DEVELOPER:	Ian Scott Paul			//
 // TEAM:	High Altitude Rocket Team	//
 // PROGRAM:	Launch Communications Software	//
-// VER.:	CONTROL-0.1			//
+// VER.:	CONTROL-0.2			//
 // PROJECT:	HART GROUND SYSTEMS		//
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 // DISCLAIMER: 	The Launch Communications Software is deployed on the 2021 Launch Communications PCBs. 	This software is written to specifically target these boards, but should function for other similar AVR systems with little configuration. See schematic in repository. 
@@ -40,6 +40,7 @@
 ////PORTB MACROS////
 #define NSS 		0
 #define ARM_SW		6
+#define COMM_EN_SW	5
 ////PORTF MACROS////
 #define ARM_LED_1	0
 #define ARM_LED_2	1
@@ -88,7 +89,7 @@ uint8_t main(){
 		DDRB 	= 0b00000111;	//PB6 input for the arm switch, PB[2:0] output for SPI 
 	    	//IOPORT B is X, ARM, X, X, MISO, MOSI, SCK, NSS
 		PORTC	= (1<<LAUNCH_BUTTON);	// set launch button to be pullup, RESET SENSE to be z 
-		PORTB 	= ((1<<ARM_SW)|(1<<NSS));// set arm sw to be pullup, write pull not slave select high
+		PORTB 	= ((1<<ARM_SW)|(1<<NSS)|(1<<COMM_EN_SW));// set arm sw to be pullup, write pull not slave select high
 	       	PORTF	= 0b11111100;		//just in case that statements ends up in the ignition, set fire to high.
 //////////END GPIO INIT///////////////////////////
 ///////////BEGIN SPI INIT////////////////////////////////////////////////////////////////
@@ -194,7 +195,7 @@ break;
 			//post fire functionality
 			break;
 		default:
-			//defualty functionality
+			//defualt functionality
 			break;
 			}//switch control
 		//CODE HERE IS STATE INDEPENDENT
@@ -269,17 +270,23 @@ void read_fifo(char current_char*){	//no array for readablility of main
 
 //bool poll_comm_en();
 bool poll_comm_en(){
-//TODO IMPLEMENT SHIFTING DEBOUNCER, TOGGLED OUPUT POST DEBOUNCED. 
+	static uint16_t comm_en_deb = 0;
+	comm_en_deb = (comm_en_deb << 1) | (!bit_is_clear(PINB,COMM_EN_SW) | 0xe000);
+	if (comm_en_deb <= 0xF000){return true;}
+	else return false;
 }
 //bool poll_arm_sw();
 bool poll_arm_sw(){
-//TODO IMPLEMENT SHIFTING DEBOUNCER, TOGGLED OUPUT POST DEBOUNCED. 
-
+	static uint16_t arm_sw_deb = 0;
+	arm_sw_deb = (arm_sw_deb << 1) | (!bit_is_clear(PINB,ARM_SW) | 0xe000);
+	if (arm_sw_deb <= 0xF000){return true;}
+	else return false;
 }
 //bool poll_launch_button();
 bool poll_launch_buttion(){
-//TODO IMPLEMENT SHIFTING DEBOUNCER, TOGGLED OUPUT POST DEBOUNCED. 
+	static uint16_t lb_deb = 0;
+	lb_deb = (lb_deb << 1) | (!bit_is_clear(PINC,LAUNCH_BUTTON) | 0xe000);
+	if (lb_deb <= 0xF000){return true;}
+	else return false;
 
 }
-
-
