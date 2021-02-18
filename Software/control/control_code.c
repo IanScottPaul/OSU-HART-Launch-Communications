@@ -309,7 +309,7 @@ bool poll_arm_sw(){
 	else return false;
 }
 //bool poll_launch_button();
-bool poll_launch_buttion(){
+bool poll_launch_button(){
 	static uint16_t lb_deb = 0;
 	lb_deb = ((lb_deb << 1) | (!bit_is_clear(PINC,LAUNCH_BUTTON)) | 0xe000);
 	if (lb_deb <= 0xF000){return true;}
