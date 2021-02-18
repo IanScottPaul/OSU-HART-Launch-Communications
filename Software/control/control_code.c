@@ -58,7 +58,8 @@
 void tx_when_ready(uint8_t, char, char, char, char);
 void set_mode_tx();
 void set_mode_rx();
-void read_fifio(char*);
+void read_fifo(char*);
+
 bool poll_comm_en();
 bool poll_arm_sw();
 bool poll_launch_button();
@@ -68,10 +69,9 @@ uint8_t main(){
 	//START OF MAIN FUNCTION VARIABLE DECLARIATIONS //
 		uint8_t	state = STATE_IDLE;		// state determines the current state of the program, use state macros. 
 		char[4]	message;			// the four character code transmitted or recieved.  
-		uint8_t address;			// the adress in transceiver memory that the spi data will be stored.
-			//address[7] is WNR, adsress[6:0] are the actual address bits. 
+			//address[7] is WNR, adsress[6:0] are the actual address bits. I have chosen to hardcode addresses in funtion calls.  
 			//The two critical addresses are 0x00 for FIFO, and 0x01 for the Operation mode register REGOPMODE	
-		uint8_t mode;
+		//boolean variables for state machine. 
 		bool communications_enabled 	= false;
 		bool communications_established = false;
 		bool arm_sw_debounced		= false;
@@ -95,14 +95,14 @@ uint8_t main(){
 		////SPRC////[DS:17.2.1]
 		//Interupts disabled, SPI enabled, MSB first, Master mode
 		//Low clk idle, fosh/64
-		SPRC = 0b01010010;	//every bit in this register can be written 	
-		SPSR = 0b00000000;	//only bit zero can be written 
+		SPRC = 0b01010010;	//every bit in this register can be written. 
+		SPSR = 0b00000000;	//only bit zero can be written in this reg so im not too worried about clobbering it here. 
 		//SPDR is data register, write data to it to transmit, read it twice to recieve data. 
 //////////END SPI INIT
-	//init timer?
-		//
-	//begin endless loop
-	while(1){						//Endless while loop
+	////END OF PROGRAM INITIALIZATION
+	//BEGIN ENDLESS WHILE LOOP
+	while(1){						
+		//BEGIN CASE STATEMENTS FOR STATE MACHINE CONTROL
 		switch(state){	//switch case statements for state machine control
 			case(STATE_IDLE): 		//in the idle state
 				if(communications_enabled()){	//if the communications enable switch is flipped
@@ -140,6 +140,10 @@ uint8_t main(){
 		default: state = STATE_IDLE;
 			break;
 		}//switch control
+////////////////////END OF STATE MACHINE CONTROL CASES////////////////////////////////////////////////////////////////
+
+
+////////////////////BEGIN CASE STATEMENTS FOR STATE MACHINE FUNCTIONALITY/////////////////////////////////////////////
 		switch(state){	//switch case statements for state machine functionality
 		//CODE HERE IS STATE DEPENDENT
 			case(STATE_IDLE): 
@@ -197,3 +201,85 @@ break;
 		
 	}//while_1
 }//main
+//FUNCTIONS//
+//
+//
+//void tx_when_ready(uint8_t, char, char, char, char);
+//this function takes full control of the uC during the SPI tranmission. 
+void tx_when_ready(uint8_t address, char c0, char c1, char c2, char c3){//no array for readablility of main
+	while(!(SPSR & (1<<7))){;}// this litteraly just waits until the spi isnt sending something. 
+	uint8_t i;
+	char word[4];
+	word[0] = c0;
+	word[1] = c1;
+	word[2] = c2;
+	word[3] = c3;
+	PORTB = (PORTB & ~(1<<0));//nss low for begining of packet transmission. 
+	SPDR = address;
+	while(!(SPSR & (1<<7))){;}// this litteraly just does nothing until the spi isnt sending something. maybe make it flash arm2?
+	for(i=0;i<4;i++){
+		SPDR = word[i];
+		while(!(SPSR & (1<<7))){;}// this litteraly just waits until the spi isnt sending something. 
+	}
+	PORTB |= (1<<0);//set nss high
+}
+//anticipated hold time: (FOSC / 64) SCK, MAX TIME is limit of six 1 byte transmissions, minimum of five 1 byte transmissions. 
+// 64 * 8 * bytes = approx hold time for transmissions. add in time for other functions. 
+//end tx when ready function description
+
+
+//void set_mode_tx();
+void set_mode_tx(){
+	while(!(SPSR & (1<<7))){;}	//this litteraly just waits until the spi isnt sending something.
+	PORTB = (PORTB & ~(1<<0));	//nss low for begining of packet transmission. 
+	SPDR = 0b10000001;		//this says write mode address 0x01
+	while(!(SPSR & (1<<7))){;}	//this litteraly just waits until the spi isnt sending something.
+	SPDR = 0b00001100;		//mode register value for transmission mode. 
+	while(!(SPSR & (1<<7))){;}	//this litteraly just waits until the spi isnt sending something.
+	PORTB |= (1<<0);		//set nss high at end of transmission
+}	
+//void set_mode_rx();
+void set_mode_rx(){
+	while(!(SPSR & (1<<7))){;}	//this litteraly just waits until the spi isnt sending something.
+	PORTB = (PORTB & ~(1<<0));	//nss low for begining of packet transmission. 
+	SPDR = 0b10000001;		//this says write mode address 0x01
+	while(!(SPSR & (1<<7))){;}	//this litteraly just waits until the spi isnt sending something.
+	SPDR = 0b00010000;		//mode register value for reciever mode. 
+	while(!(SPSR & (1<<7))){;}	//this litteraly just waits until the spi isnt sending something.
+	PORTB |= (1<<0);		//set nss high at end of transmission
+}	
+//void read_fifo(char*);
+void read_fifo(char current_char*){	//no array for readablility of main
+	while(!(SPSR & (1<<7))){;}	// this litteraly just waits until the spi isnt sending something. 
+	uint8_t i;
+	char word[4];
+	PORTB = (PORTB & ~(1<<0));	//nss low for begining of packet transmission. 
+	SPDR = 0b00000000;		//read FIFO address command
+	while(!(SPSR & (1<<7))){;}	// this litteraly just does nothing until the spi isnt sending something. maybe make it flash arm2?
+	for(i=0;i<4;i++){
+		word[i]; = SPDR;
+		while(!(SPSR & (1<<7))){;}// this litteraly just waits until the spi isnt sending something. 
+	}
+	PORTB |= (1<<0);		//set nss high
+	
+	for(i=0;i<4;i++){
+	current_char[i] = word[i];// FIXME THIS MIGHT NOT WORK. IF THERE IS NO MEMORY PROTECTION IT SHOULD BE FINE
+	}
+}
+
+//bool poll_comm_en();
+bool poll_comm_en(){
+//TODO IMPLEMENT SHIFTING DEBOUNCER, TOGGLED OUPUT POST DEBOUNCED. 
+}
+//bool poll_arm_sw();
+bool poll_arm_sw(){
+//TODO IMPLEMENT SHIFTING DEBOUNCER, TOGGLED OUPUT POST DEBOUNCED. 
+
+}
+//bool poll_launch_button();
+bool poll_launch_buttion(){
+//TODO IMPLEMENT SHIFTING DEBOUNCER, TOGGLED OUPUT POST DEBOUNCED. 
+
+}
+
+
