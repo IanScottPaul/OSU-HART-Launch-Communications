@@ -7,3 +7,6 @@
 [submodule "Software/LaunchControl"]
 	path = Software/LaunchControl
 	url = https://github.com/HART-Avionics/OSU-HART-Launch-Control-Software.git
+[submodule "Software/Software/LaunchIgnition"]
+	path = Software/Software/LaunchIgnition
+	url = https://github.com/HART-Avionics/OSU-HART-Launch-Ignition-Software.git
