@@ -50,6 +50,14 @@
 #define FIRE_IG_1	5
 #define ARM_IG_2	6
 #define FIRE_IG_2	7
+#define SIG_ERROR	0b11111111
+#define SIG_IDLE	0b00000011
+#define SIG_ESTABLISH	0b00000001
+#define SIG_READY	0b00000010
+#define SIG_ARMING	0b10000000
+#define SIG_ARMED	0b10000001
+#define SIG_FIREING	0b10000010
+#define SIG_FIRED	0b10000011
 ////TIMING MACROS////
 #define TRANSITON_TIME 	10
 #define RX_TIME		100
@@ -100,7 +108,7 @@ uint8_t main(){
 	    	//IOPORT B is X, ARM, COMM_EN, X, MISO, MOSI, SCK, NSS
 		PORTC	= (1<<LAUNCH_BUTTON);	// set launch button to be pullup, RESET SENSE to be z 
 		PORTB 	= ((1<<ARM_SW)|(1<<NSS)|(1<<COMM_EN_SW));// set arm sw to be pullup, write pull not slave select high
-	       	PORTF	= 0b11111100;		//just in case that statements ends up in the ignition, set fire to high.
+	       	PORTF	= SIG_ERROR;		//just in case that statements ends up in the ignition, set fire to high.
 //////////END GPIO INIT///////////////////////////
 ///////////BEGIN SPI INIT////////////////////////////////////////////////////////////////
 		////SPRC////[DS:17.2.1]
@@ -116,6 +124,7 @@ uint8_t main(){
 		//BEGIN CASE STATEMENTS FOR STATE MACHINE CONTROL
 		switch(state){	//switch case statements for state machine control
 			case(STATE_IDLE): 		//in the idle state
+				PORTF = SIG_IDLE;
 				if(communications_enabled){	//if the communications enable switch is flipped
 					state = STATE_ESTABLISH;	//change state to esablish communications
 				}//if comm deb
@@ -123,34 +132,40 @@ uint8_t main(){
 				}//else comm deb
 			break;
 		case(STATE_ESTABLISH):
+				PORTF = SIG_ESTABLISH;
 				if(communications_established)		{state = STATE_READY;}//if comm est
 				else					{state = STATE_IDLE;}//else comm est
 			break;
 		case(STATE_READY):
+				PORTF = SIG_READY;
 				if(!communications_established)	{state = STATE_ESTABLISH;}
 				else if(arm_sw_debounced)	{state = STATE_ARMING;}//IF ARM SW DEB
 				else				{state = STATE_READY;}//else arm sw deb
 			break;
 		case(STATE_ARMING):
+				PORTF = SIG_ARMING;
 				if(!arm_sw_debounced)		{state = STATE_READY;}
 				else if(system_armed)		{state = STATE_ARMED;}//if armed
 				else				{state = STATE_ARMING;}//else armed
 			break;	
 		case(STATE_ARMED):
+				PORTF = SIG_ARMED;
 				if (!arm_sw_debounced)			{state = STATE_READY;}
 				else if (launch_button_debounced)	{state = STATE_FIREING;}
 				else 					{state = STATE_ARMED;}
 			break;
 		case(STATE_FIREING):
+				PORTF = SIG_FIREING;
 				if(fire_ackd)		{ state = STATE_FIRED;  }//if fire ackd
 				else			{ state = STATE_FIREING;}
 			break;
 		case(STATE_FIRED):
+				PORTF = SIG_FIRED;
 				if (!communications_enabled)		{state = STATE_IDLE;}
 				if (!system_armed)			{state = STATE_ESTABLISH;}//IF SYS UNARMED
 				else 					{state = STATE_FIRED;}
 			break;
-		default: 					state = STATE_IDLE;
+		default: 				state = STATE_IDLE;
 			break;
 		}//switch control
 ////////////////////END OF STATE MACHINE CONTROL CASES////////////////////////////////////////////////////////////////
@@ -296,23 +311,37 @@ void read_fifo(char* current_char){	//no array for readablility of main
 
 //bool poll_comm_en();
 bool poll_comm_sw(){
-	static uint16_t comm_en_deb = 0;
-	comm_en_deb = ((comm_en_deb << 1) | (!bit_is_clear(PINB,COMM_EN_SW)) | 0xe000);
-	if (comm_en_deb <= 0xF000){return true;}
-	else return false;
+	static uint16_t comm_en_deb = 0;				//static variable to count low signal time
+	if(bit_is_clear(PINB,COMM_EN_SW)){comm_en_deb++;}		//if the bit is cleared, increment the counter
+	else{								//else bit set
+		if(comm_en_deb == 0)	{;}					//if the counter is 0 do nothing
+		else			{comm_en_deb = comm_en_deb - 1;}	//else the counter is non0, decrement it	
+	}
+	_delay_ms(1);							//delay so debounce is in human times
+	if (comm_en_deb >= 50){comm_en_deb = 50; return true;}		//if the count is greater than 50, set back to 50 and return true
+	else return false;						//else return false
 }
 //bool poll_arm_sw();
 bool poll_arm_sw(){
 	static uint16_t arm_sw_deb = 0;
-	arm_sw_deb = ((arm_sw_deb << 1) | (!bit_is_clear(PINB,ARM_SW)) | 0xe000);
-	if (arm_sw_deb <= 0xF000){return true;}
-	else return false;
+	if(bit_is_clear(PINB,ARM_SW)){arm_sw_deb++;}		//if the bit is cleared, increment the counter
+	else{								//else bit set
+		if(arm_sw_deb == 0)	{;}					//if the counter is 0 do nothing
+		else			{arm_sw_deb = arm_sw_deb - 1;}	//else the counter is non0, decrement it	
+	}
+	_delay_ms(1);							//delay so debounce is in human times
+	if (arm_sw_deb >= 50){arm_sw_deb = 50; return true;}		//if the count is greater than 50, set back to 50 and return true
+	else return false;						//else return false
 }
 //bool poll_launch_button();
 bool poll_launch_button(){
 	static uint16_t lb_deb = 0;
-	lb_deb = ((lb_deb << 1) | (!bit_is_clear(PINC,LAUNCH_BUTTON)) | 0xe000);
-	if (lb_deb <= 0xF000){return true;}
-	else return false;
-
+	if(bit_is_clear(PINB,LAUNCH_BUTTON)){lb_deb++;}			//if the bit is cleared, increment the counter
+	else{								//else bit set
+		if(lb_deb == 0)	{;}					//if the counter is 0 do nothing
+		else			{lb_deb = lb_deb - 1;}		//else the counter is non0, decrement it	
+	}
+	_delay_ms(1);							//delay so debounce is in human times
+	if (lb_deb >= 50){lb_deb = 50; return true;}			//if the count is greater than 50, set back to 50 and return true
+	else return false;						//else return false
 }
