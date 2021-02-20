@@ -125,6 +125,7 @@ uint8_t main(){
 		switch(state){	//switch case statements for state machine control
 			case(STATE_IDLE): 		//in the idle state
 				PORTF = SIG_IDLE;
+				communications_enabled = poll_comm_sw();
 				if(communications_enabled){	//if the communications enable switch is flipped
 					state = STATE_ESTABLISH;	//change state to esablish communications
 				}//if comm deb
@@ -132,30 +133,74 @@ uint8_t main(){
 				}//else comm deb
 			break;
 		case(STATE_ESTABLISH):
+				//establish functionality
 				PORTF = SIG_ESTABLISH;
+				set_mode_tx();
+				_delay_ms(TRANSITON_TIME);
+				tx_when_ready(0x80,'t','e','s','t');// 0b10000000 is write mode for FIFO, hex 0x80
+				_delay_ms(TX_TIME);
+				set_mode_rx();
+				_delay_ms(TRANSITON_TIME);
+				_delay_ms(RX_TIME);//time for message to tx, be decoded, and sent back 
+				read_fifo(message);
+				if(strcmp(message, msg_tst_1)){
+					communications_established = true;
+				}
+				else{
+					communications_established = false;
+				}
 				if(communications_established)		{state = STATE_READY;}//if comm est
 				else					{state = STATE_IDLE;}//else comm est
 			break;
 		case(STATE_READY):
 				PORTF = SIG_READY;
+				arm_sw_debounced = poll_arm_sw();
 				if(!communications_established)	{state = STATE_ESTABLISH;}
 				else if(arm_sw_debounced)	{state = STATE_ARMING;}//IF ARM SW DEB
 				else				{state = STATE_READY;}//else arm sw deb
 			break;
 		case(STATE_ARMING):
 				PORTF = SIG_ARMING;
+				set_mode_tx();
+				_delay_ms(TRANSITON_TIME);
+				tx_when_ready(0x80,'a','r','m','1');
+				_delay_ms(TX_TIME);// time to send 
+				set_mode_rx();
+				_delay_ms(TRANSITON_TIME);
+				_delay_ms(RX_TIME);
+				read_fifo(message);
+				if(strcmp(message, msg_arm_1)){
+					system_armed = true;
+				}
+				else{
+					system_armed = false;
+				}
 				if(!arm_sw_debounced)		{state = STATE_READY;}
 				else if(system_armed)		{state = STATE_ARMED;}//if armed
 				else				{state = STATE_ARMING;}//else armed
 			break;	
 		case(STATE_ARMED):
 				PORTF = SIG_ARMED;
+				launch_button_debounced = poll_launch_button();
 				if (!arm_sw_debounced)			{state = STATE_READY;}
 				else if (launch_button_debounced)	{state = STATE_FIREING;}
 				else 					{state = STATE_ARMED;}
 			break;
 		case(STATE_FIREING):
 				PORTF = SIG_FIREING;
+				set_mode_tx();
+				tx_when_ready(0x80,'f','i','r','e');
+				_delay_ms(TX_TIME);//allow time to tx
+				set_mode_rx();
+				_delay_ms(TRANSITON_TIME);
+				_delay_ms(RX_TIME);
+				read_fifo(message);
+				if(strcmp(message, msg_fire1)){
+					fire_ackd = true;
+				}
+				else{
+					fire_ackd = false;
+				}
 				if(fire_ackd)		{ state = STATE_FIRED;  }//if fire ackd
 				else			{ state = STATE_FIREING;}
 			break;
@@ -172,75 +217,75 @@ uint8_t main(){
 //		character arrays for strcmp of messages. 
 		
 ////////////////////BEGIN CASE STATEMENTS FOR STATE MACHINE FUNCTIONALITY/////////////////////////////////////////////
-		switch(state){	//switch case statements for state machine functionality
+	//	switch(state){	//switch case statements for state machine functionality
 		//CODE HERE IS STATE DEPENDENT
-			case(STATE_IDLE): 
-			//idle functionality
-			communications_enabled = poll_comm_sw();
-			break;
-		case(STATE_ESTABLISH):
-			//establish functionality
-			set_mode_tx();
-			_delay_ms(TRANSITON_TIME);
-			tx_when_ready(0x80,'t','e','s','t');// 0b10000000 is write mode for FIFO, hex 0x80
-			_delay_ms(TX_TIME);
-			set_mode_rx();
-			_delay_ms(TRANSITON_TIME);
-			_delay_ms(RX_TIME);//time for message to tx, be decoded, and sent back 
-			read_fifo(message);
-			if(strcmp(message, msg_tst_1)){
-				communications_established = true;
-			}
-			else{
-				communications_established = false;
-			}
-			break;
-		case(STATE_READY):
-			arm_sw_debounced = poll_arm_sw();
+	//		case(STATE_IDLE): 
+	//		//idle functionality
+	//		communications_enabled = poll_comm_sw();
+	//		break;
+	//	case(STATE_ESTABLISH):
+	//		//establish functionality
+	//		set_mode_tx();
+	//		_delay_ms(TRANSITON_TIME);
+	//		tx_when_ready(0x80,'t','e','s','t');// 0b10000000 is write mode for FIFO, hex 0x80
+	//		_delay_ms(TX_TIME);
+	//		set_mode_rx();
+	//		_delay_ms(TRANSITON_TIME);
+	//		_delay_ms(RX_TIME);//time for message to tx, be decoded, and sent back 
+	//		read_fifo(message);
+	//		if(strcmp(message, msg_tst_1)){
+	//			communications_established = true;
+	//		}
+	//		else{
+	//			communications_established = false;
+	//		}
+	//		break;
+//		case(STATE_READY):
+//			arm_sw_debounced = poll_arm_sw();
 			//ready functionality
-			break;
-		case(STATE_ARMING):
+//			break;
+//		case(STATE_ARMING):
 			//arming functionality
-			set_mode_tx();
-			_delay_ms(TRANSITON_TIME);
-			tx_when_ready(0x80,'a','r','m','1');
-			_delay_ms(TX_TIME);// time to send 
-			set_mode_rx();
-			_delay_ms(TRANSITON_TIME);
-			_delay_ms(RX_TIME);
-			read_fifo(message);
-			if(strcmp(message, msg_arm_1)){
-				system_armed = true;
-			}
-			else{
-				system_armed = false;
-			}
-			break;	
-		case(STATE_ARMED):
-			launch_button_debounced = poll_launch_button();
-			break;
-		case(STATE_FIREING):
-			set_mode_tx();
-			tx_when_ready(0x80,'f','i','r','e');
-			_delay_ms(TX_TIME);//allow time to tx
-			set_mode_rx();
-			_delay_ms(TRANSITON_TIME);
-			_delay_ms(RX_TIME);
-			read_fifo(message);
-			if(strcmp(message, msg_fire1)){
-				fire_ackd = true;
-			}
-			else{
-				fire_ackd = false;
-			}
-			break;
-		case(STATE_FIRED):
+//			set_mode_tx();
+//			_delay_ms(TRANSITON_TIME);
+//			tx_when_ready(0x80,'a','r','m','1');
+//			_delay_ms(TX_TIME);// time to send 
+//			set_mode_rx();
+//			_delay_ms(TRANSITON_TIME);
+//			_delay_ms(RX_TIME);
+//			read_fifo(message);
+//			if(strcmp(message, msg_arm_1)){
+//				system_armed = true;
+//			}
+//			else{
+//				system_armed = false;
+//			}
+//			break;	
+//		case(STATE_ARMED):
+//			launch_button_debounced = poll_launch_button();
+//			break;
+//		case(STATE_FIREING):
+//			set_mode_tx();
+//			tx_when_ready(0x80,'f','i','r','e');
+//			_delay_ms(TX_TIME);//allow time to tx
+//			set_mode_rx();
+////			_delay_ms(TRANSITON_TIME);
+//			_delay_ms(RX_TIME);
+//			read_fifo(message);
+////			if(strcmp(message, msg_fire1)){
+//				fire_ackd = true;
+//			}
+//			else{
+//				fire_ackd = false;
+//			}
+//			break;
+//		case(STATE_FIRED):
 			//post fire functionality
-			break;
-		default:
+//			break;
+//		default:
 			//defualt functionality
-			break;
-			}//switch control
+//			break;
+//			}//switch control
 		//CODE HERE IS STATE INDEPENDENT	
 	}//while_1
 }//main
@@ -311,14 +356,15 @@ void read_fifo(char* current_char){	//no array for readablility of main
 
 //bool poll_comm_en();
 bool poll_comm_sw(){
-	static uint16_t comm_en_deb = 0;				//static variable to count low signal time
-	if(bit_is_clear(PINB,COMM_EN_SW)){comm_en_deb++;}		//if the bit is cleared, increment the counter
+	static uint8_t comm_en_deb = 0;		//static variable to count low signal time
+	_delay_ms(100);							//delay so debounce is in human times
+	PORTF = SIG_READY;
+	if(bit_is_clear(PINB, COMM_EN_SW))	{comm_en_deb++;}	//if the bit is cleared, increment the counter
 	else{								//else bit set
 		if(comm_en_deb == 0)	{;}					//if the counter is 0 do nothing
 		else			{comm_en_deb = comm_en_deb - 1;}	//else the counter is non0, decrement it	
 	}
-	_delay_ms(1);							//delay so debounce is in human times
-	if (comm_en_deb >= 50){comm_en_deb = 50; return true;}		//if the count is greater than 50, set back to 50 and return true
+	if (comm_en_deb >= 5){comm_en_deb = 5; return true;}		//if the count is greater than 50, set back to 50 and return true
 	else return false;						//else return false
 }
 //bool poll_arm_sw();
