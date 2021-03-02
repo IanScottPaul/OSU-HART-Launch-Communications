@@ -1,4 +1,4 @@
-PRG            = ignition_code
+PRG            = simple_spi_code
 OBJ            = $(PRG).o
 
 MCU_TARGET     = atmega32u4

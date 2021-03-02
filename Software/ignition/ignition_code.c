@@ -29,20 +29,12 @@
 #include <util/delay.h>		//needed for delays, in future versions use Timers
 #include <string.h>
 ////////STATE MACROS////////
-#define STATE_IDLE 	0
-#define STATE_ESTABLISH	1
+#define STATE_LISTENING 0
 #define STATE_READY 	2
-#define STATE_ARMING	4
-#define STATE_ARMED	8
-#define STATE_FIREING	16
-#define STATE_FIRED	255
-////PORTC MACROS////
-#define LAUNCH_BUTTON 	7
-#define RESET_SENSOR	6
+#define STATE_ARM	8
+#define STATE_FIRE 	255
 ////PORTB MACROS////
 #define NSS 		0
-#define ARM_SW		6
-#define COMM_EN_SW	5
 ////PORTF MACROS////
 #define ARM_LED_1	0
 #define ARM_LED_2	1
@@ -50,14 +42,10 @@
 #define FIRE_IG_1	5
 #define ARM_IG_2	6
 #define FIRE_IG_2	7
-#define SIG_ERROR	0b11111111
-#define SIG_IDLE	0b00000011
-#define SIG_ESTABLISH	0b00000001
-#define SIG_READY	0b00000010
-#define SIG_ARMING	0b10000000
-#define SIG_ARMED	0b10000001
-#define SIG_FIREING	0b10000010
-#define SIG_FIRED	0b10000011
+#define LISTEN_REG	((1<<ARM_IG_1)|(1<<FIRE_IG_1))
+#define READY_REG	((1<<ARM_IG_1)|(1<<FIRE_IG_1)|(1<<ARM_LED_2))
+#define ARM_REG		((1<<FIRE_IG_1)|(1<<ARM_LED_1))
+#define FIRE_REG	((1<<ARM_LED_1)|(1<<ARM_LED_2))
 ////TIMING MACROS////
 #define TRANSITON_TIME 	10
 #define RX_TIME		100
@@ -69,9 +57,6 @@ void set_mode_tx();
 void set_mode_rx();
 void read_fifo(char*);
 
-bool poll_comm_sw();
-bool poll_arm_sw();
-bool poll_launch_button();
 ////////MAIN FUNCTION DESCRIPTION////////
 //as of version 0.2, main holds control uninterrupted.
 //main is broken into primary two sections: Initialization and Loop
@@ -82,11 +67,12 @@ bool poll_launch_button();
 uint8_t main(){	
 	////Program Initialization////
 	//START OF MAIN FUNCTION VARIABLE DECLARIATIONS //
-		uint8_t	state = STATE_IDLE;		// state determines the current state of the program, use state macros. 
-		char message[4];			// the four character code transmitted or recieved.  
-		char msg_tst_1[4] = {'T','A','C','K'};
-		char msg_arm_1[4] = {'A','R','M','A'};
-		char msg_fire1[4] = {'F','I','R','A'};
+		uint8_t i;
+		uint8_t	state = STATE_LISTENING;		// state determines the current state of the program, use state macros. 
+		char message[4]   = {NULL, NULL, NULL, NULL};			// the four character code transmitted or recieved.  
+		char msg_tst_1[4] = {'t','e','s','t'};
+		char msg_arm_1[4] = {'a','r','m','1'};
+		char msg_fire1[4] = {'f','i','r','e'};
 			//address[7] is WNR, adsress[6:0] are the actual address bits. I have chosen to hardcode addresses in funtion calls.  
 			//The two critical addresses are 0x00 for FIFO, and 0x01 for the Operation mode register REGOPMODE	
 		//boolean variables for state machine. 
@@ -102,15 +88,11 @@ uint8_t main(){
 						//DDRX is data direction. 1 is output, 0 is input [DS:10.2]
 						//PORTX will set the value to output, or the pullmode of the input. 1 is up 0 is down. 
 						//PINX can be used to read the value of the input pins of X
-		DDRC 	= 0b00000000;	//The only two pins on DDRC are inputs
 		DDRF	= 0xFF;		// all PORTF pins are outputs. 	
-		DDRB 	= 0b00000111;	//PB6 input for the arm switch, PB[2:0] output for SPI 
-	    	DDRE 	= 0x00;		//set PORT E input
-		//IOPORT B is X, ARM, COMM_EN, X, MISO, MOSI, SCK, NSS
-		PORTC	= (1<<LAUNCH_BUTTON);	// set launch button to be pullup, RESET SENSE to be z 
-		PORTB 	= ((1<<ARM_SW)|(1<<NSS)|(1<<COMM_EN_SW));// set arm sw to be pullup, write pull not slave select high
-	       	PORTE 	= 0;
-		PORTF	= SIG_ERROR;		//just in case that statements ends up in the ignition, set fire to high.
+		DDRB 	= 0b00000111;	// PB[2:0] output for SPI pb[4] for fifo level detector
+	    	//IOPORT B is X, X, X, X, MISO, MOSI, SCK, NSS
+		PORTB 	= (1<<NSS);// set arm sw to be pullup, write pull not slave select high
+	       	PORTF	= 0xFF;		//.
 //////////END GPIO INIT///////////////////////////
 ///////////BEGIN SPI INIT////////////////////////////////////////////////////////////////
 		////SPRC////[DS:17.2.1]
@@ -120,98 +102,54 @@ uint8_t main(){
 		SPSR = 0b00000000;	//only bit zero can be written in this reg so im not too worried about clobbering it here. 
 		//SPDR is data register, write data to it to transmit, read it twice to recieve data. 
 //////////END SPI INIT
+		_delay_ms(TRANSITON_TIME);
+		set_mode_rx();
+		_delay_ms(TRANSITON_TIME);
+		_delay_ms(RX_TIME);//time for message to tx, be decoded, and sent back 
 	////END OF PROGRAM INITIALIZATION
 	//BEGIN ENDLESS WHILE LOOP
 	while(1){						
 		//BEGIN CASE STATEMENTS FOR STATE MACHINE CONTROL
 		switch(state){	//switch case statements for state machine control
-			case(STATE_IDLE): 		//in the idle state
-				PORTF = SIG_IDLE;
-				communications_enabled = poll_comm_sw();
-				if(communications_enabled){	//if the communications enable switch is flipped
-					state = STATE_ESTABLISH;	//change state to esablish communications
-					set_mode_tx();
-				}//if comm deb
-				else{ state = STATE_IDLE;	//hold state as IDLE;
-				}//else comm deb
-			break;
-		case(STATE_ESTABLISH):
-				//establish functionality
-				PORTF = SIG_ESTABLISH;
-				tx_when_ready(0x80,'t','e','s','t');// 0b10000000 is write mode for FIFO, hex 0x80
-				_delay_ms(500);
-				if(bit_is_set(PINE, 6)){	
-					set_mode_rx();
-					read_fifo(message);
-					if(strcmp(message, msg_tst_1)){
-						communications_established = true;
+			case(STATE_LISTENING): 		//in the idle state
+				//PORTF = LISTEN_REG;
+				if (bit_is_set(PINB,4)){
+					_delay_ms(200);
+					PORTB = (PORTB & ~(1<<0));	//nss low for begining of packet transmission. 
+					_delay_ms(1);			//time for nss to change #FIXME lower this value
+					SPDR = 0b00000000;		//read FIFO address command
+					while(!(SPSR & (1<<7))){;}	// this litteraly just does nothing until the spi isnt sending something. maybe make it flash arm2?
+					for(i=0;i<4;i++){
+						SPDR = 0b00000000;		//read FIFO address command
+						while(!(SPSR & (1<<7))){;}	// this
+						message[i] = SPDR;
 					}
-					else{
-						communications_established = false;
-					}
+					PORTB |= (1<<0);		//set nss high
+					_delay_ms(1);			//time for nss to change #FIXME lower this value
 				}
-				if(communications_established)		{state = STATE_READY;}//if comm est
-				else					{state = STATE_ESTABLISH;}//else comm est
+				//if (strcmp(message, msg_tst_1)){	//
+				//	state = STATE_ARM;		//
+				//}
+				//else
+				uint8_t i;
+				for(i=0; i<4; i++){
+				if (message[i] == 't'){		//#FIXME CHANGE THIS IF IT WORKS!
+					state = STATE_READY;}	
+				else{ ;//state = STATE_LISTENING;	//hold state as IDLE;
+				}//else comm deb
+				}
 			break;
 		case(STATE_READY):
-				PORTF = SIG_READY;
-				arm_sw_debounced = poll_arm_sw();
-				if(!communications_established)	{state = STATE_ESTABLISH;}
-				else if(arm_sw_debounced)	{state = STATE_ARMING;}//IF ARM SW DEB
-				else				{state = STATE_READY;}//else arm sw deb
+				PORTF = READY_REG;	
 			break;
-		case(STATE_ARMING):
-				PORTF = SIG_ARMING;
-				set_mode_tx();
-				_delay_ms(TRANSITON_TIME);
-				tx_when_ready(0x80,'a','r','m','1');
-				_delay_ms(TX_TIME);// time to send 
-				set_mode_rx();
-				_delay_ms(TRANSITON_TIME);
-				_delay_ms(RX_TIME);
-				read_fifo(message);
-				if(strcmp(message, msg_arm_1)){
-					system_armed = true;
-				}
-				else{
-					system_armed = false;
-				}
-				if(!arm_sw_debounced)		{state = STATE_READY;}
-				else if(system_armed)		{state = STATE_ARMED;}//if armed
-				else				{state = STATE_ARMING;}//else armed
-			break;	
-		case(STATE_ARMED):
-				PORTF = SIG_ARMED;
-				launch_button_debounced = poll_launch_button();
-				if (!arm_sw_debounced)			{state = STATE_READY;}
-				else if (launch_button_debounced)	{state = STATE_FIREING;}
-				else 					{state = STATE_ARMED;}
+		case(STATE_ARM):
+				PORTF = ARM_REG;
 			break;
-		case(STATE_FIREING):
-				PORTF = SIG_FIREING;
-				set_mode_tx();
-				tx_when_ready(0x80,'f','i','r','e');
-				_delay_ms(TX_TIME);//allow time to tx
-				set_mode_rx();
-				_delay_ms(TRANSITON_TIME);
-				_delay_ms(RX_TIME);
-				read_fifo(message);
-				if(strcmp(message, msg_fire1)){
-					fire_ackd = true;
-				}
-				else{
-					fire_ackd = false;
-				}
-				if(fire_ackd)		{ state = STATE_FIRED;  }//if fire ackd
-				else			{ state = STATE_FIREING;}
+		case(STATE_FIRE):
+
 			break;
-		case(STATE_FIRED):
-				PORTF = SIG_FIRED;
-				if (!communications_enabled)		{state = STATE_IDLE;}
-				if (!system_armed)			{state = STATE_ESTABLISH;}//IF SYS UNARMED
-				else 					{state = STATE_FIRED;}
-			break;
-		default: 				state = STATE_IDLE;
+		default: 
+			state = STATE_LISTENING;
 			break;
 		}//switch control
 	}//while_1
@@ -229,15 +167,15 @@ void tx_when_ready(uint8_t address, char c0, char c1, char c2, char c3){//no arr
 	word[2] = c2;
 	word[3] = c3;
 	PORTB = (PORTB & ~(1<<0));//nss low for begining of packet transmission. 
-	_delay_ms(1);			//time for nss pin to become low. #FIXME lower this value
+	_delay_ms(1);			//time for nss to change #FIXME lower this value
 	SPDR = address;
-	while(!(SPSR & (1<<7))){;}	// this litteraly just does nothing until the spi isnt sending something. maybe make it flash arm2?
-	for(i=0;i<4;i++){		 
+	while(!(SPSR & (1<<7))){;}// this litteraly just does nothing until the spi isnt sending something. maybe make it flash arm2?
+	for(i=0;i<4;i++){
 		SPDR = word[i];
 		while(!(SPSR & (1<<7))){;}// this litteraly just waits until the spi isnt sending something. 
 	}
 	PORTB |= (1<<0);//set nss high
-	_delay_ms(1);			//time for nss pin to become low. #FIXME lower this value
+	_delay_ms(1);			//time for nss to change #FIXME lower this value
 }
 //anticipated hold time: (FOSC / 64) SCK, MAX TIME is limit of six 1 byte transmissions, minimum of five 1 byte transmissions. 
 // 64 * 8 * bytes = approx hold time for transmissions. add in time for other functions. 
@@ -247,77 +185,43 @@ void tx_when_ready(uint8_t address, char c0, char c1, char c2, char c3){//no arr
 //void set_mode_tx();
 void set_mode_tx(){
 	PORTB = (PORTB & ~(1<<0));	//nss low for begining of packet transmission. 
-	_delay_ms(1);			//time for nss pin to become low. #FIXME lower this value
+	_delay_ms(1);			//time for nss to change #FIXME lower this value
 	SPDR = 0b10000001;		//this says write mode address 0x01
 	while(!(SPSR & (1<<7))){;}	//this litteraly just waits until the spi isnt sending something.
 	SPDR = 0b10001100;		//mode register value for transmission mode. 
 	while(!(SPSR & (1<<7))){;}	//this litteraly just waits until the spi isnt sending something.
 	PORTB |= (1<<0);		//set nss high at end of transmission
-	_delay_ms(1);
+	_delay_ms(1);			//time for nss to change #FIXME lower this value
 }	
 //void set_mode_rx();
 void set_mode_rx(){
 	PORTB = (PORTB & ~(1<<0));	//nss low for begining of packet transmission. 
-	_delay_ms(1);
+	_delay_ms(1);			//time for nss to change #FIXME lower this value
 	SPDR = 0b10000001;		//this says write mode address 0x01
 	while(!(SPSR & (1<<7))){;}	//this litteraly just waits until the spi isnt sending something.
 	SPDR = 0b10010000;		//mode register value for reciever mode. 
 	while(!(SPSR & (1<<7))){;}	//this litteraly just waits until the spi isnt sending something.
 	PORTB |= (1<<0);		//set nss high at end of transmission
-	_delay_ms(1);			//time for nss pin to become low. #FIXME lower this value
+	_delay_ms(1);			//time for nss to change #FIXME lower this value
 }	
 //void read_fifo(char*);
 void read_fifo(char* current_char){	//no array for readablility of main
 	uint8_t i;
 	char word[4];
 	PORTB = (PORTB & ~(1<<0));	//nss low for begining of packet transmission. 
-	_delay_ms(1);			//time for nss pin to become low. #FIXME lower this value
+	_delay_ms(1);			//time for nss to change #FIXME lower this value
 	SPDR = 0b00000000;		//read FIFO address command
 	while(!(SPSR & (1<<7))){;}	// this litteraly just does nothing until the spi isnt sending something. maybe make it flash arm2?
+	word[0] = SPDR; 
+	while(!(SPSR & (1<<7))){;}// this litteraly just waits until the spi isnt sending something. 
 	for(i=0;i<4;i++){
 		word[i] = SPDR;
 		while(!(SPSR & (1<<7))){;}// this litteraly just waits until the spi isnt sending something. 
 	}
-	PORTB |= (1<<0);	//set nss high
-	for(i=0;i<4;i++){
+	PORTB |= (1<<0);		//set nss high
+	_delay_ms(1);			//time for nss to change #FIXME lower this value
+	for(i=0;i<1;i++){
 	*(current_char + i) = word[i];
-	}
-	_delay_ms(1);
+	}	
 }
 
-//bool poll_comm_en();
-bool poll_comm_sw(){
-	static uint8_t comm_en_deb = 0;		//static variable to count low signal time
-	_delay_ms(10);							//delay so debounce is in human times
-	if(bit_is_clear(PINB, COMM_EN_SW))	{comm_en_deb++;}	//if the bit is cleared, increment the counter
-	else{								//else bit set
-		if(comm_en_deb == 0)	{;}					//if the counter is 0 do nothing
-		else			{comm_en_deb = comm_en_deb - 1;}	//else the counter is non0, decrement it	
-	}
-	if (comm_en_deb >= 25){comm_en_deb = 25; return true;}		//if the count is greater than 50, set back to 50 and return true
-	else return false;						//else return false
-}
-//bool poll_arm_sw();
-bool poll_arm_sw(){
-	static uint16_t arm_sw_deb = 0;
-	if(bit_is_clear(PINB,ARM_SW)){arm_sw_deb++;}		//if the bit is cleared, increment the counter
-	else{								//else bit set
-		if(arm_sw_deb == 0)	{;}					//if the counter is 0 do nothing
-		else			{arm_sw_deb = arm_sw_deb - 1;}	//else the counter is non0, decrement it	
-	}
-	_delay_ms(10);							//delay so debounce is in human times
-	if (arm_sw_deb >= 25){arm_sw_deb = 25; return true;}		//if the count is greater than 50, set back to 50 and return true
-	else return false;						//else return false
-}
-//bool poll_launch_button();
-bool poll_launch_button(){
-	static uint16_t lb_deb = 0;
-	if(bit_is_clear(PINB,LAUNCH_BUTTON)){lb_deb++;}			//if the bit is cleared, increment the counter
-	else{								//else bit set
-		if(lb_deb == 0)	{;}					//if the counter is 0 do nothing
-		else			{lb_deb = lb_deb - 1;}		//else the counter is non0, decrement it	
-	}
-	_delay_ms(10);							//delay so debounce is in human times
-	if (lb_deb >= 25){lb_deb = 25; return true;}			//if the count is greater than 50, set back to 50 and return true
-	else return false;						//else return false
-}
