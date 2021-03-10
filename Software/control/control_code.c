@@ -62,6 +62,138 @@
 #define TRANSITON_TIME 	10
 #define RX_TIME		100
 #define TX_TIME		100
+////SPI MACROS////
+//ADDRESSES
+#define READ(x)		(x)		//the addresses are in read mode by default
+#define WRITE(x)	((x) | (1<<7))	//setting bit 7, write not read, sets the mode to write for that register. 
+#define FIFO		0X00	//WNR 0, addr 0
+#define OPMODE		0X01	//
+#define	DATAMOD		0X02 
+#define BITRATE_H	0X03
+#define BITRATE_L	0X04
+#define F_DEV_H		0X05
+#define F_DEV_L		0X06
+#define FRF_H		0X07
+#define FRF_M		0X08
+#define FRF_L		0X09
+#define OSC1		0X0A
+#define AFC_CTRL	0X0B
+#define LISTEN1		0X0D
+#define LISTEN2		0X0E
+#define LISTEN3		0X0F
+#define VERSION		0X10
+#define PA_LEVEL	0X11
+#define PA_RAMP		0X12
+#define OCP		0X13
+#define LNA		0X18
+#define RX_BW		0X19
+#define AFC_BW		0X1A
+#define OOK_PEAK	0X1B
+#define OOK_AVG		0X1C
+#define OOK_FIX		0X1D
+#define AFC_FEI		0X1E
+#define AFC_H		0X1F
+#define AFC_L		0X20
+#define FEI_H		0X21
+#define FEI_L		0X1A
+#define FEI_L		0X22
+#define RSSI_CONFIG	0X23
+#define RSSI_VALUE	0X24
+#define DIO_MAP_1	0X25
+#define DIO_MAP_2	0X26
+#define IRQ_FLAGS_1	0X27
+#define IRQ_FLAGS_2	0X28
+#define	RSSI_THRESHOLD	0X29
+#define RX_TIMEOUT_1	0X2A
+#define RX_TIMEOUT_2	0X2B
+#define PREAMBLE_H	0X2C
+#define PREAMBLE_L	0X2D
+#define SYNC_CONFIG	0X2E
+#define SYNC_VALUE_1	0X2F
+#define SYNC_VALUE_8	0X36
+#define PACKET_CONFIG_1	0X37
+#define PAYLOAD_LENGTH	0X38
+#define NODE_ADDRS	0X39
+#define BRODCAST_ADDRS	0X3A
+#define AUTO_MODES	0X3B
+#define FIFO_THRESH	0X3C
+#define PACKET_CONFIG_2	0X3D
+#define AES_KEY_ADDR_H	0X3E
+#define AES_KEY_ADDR_l	0X4D
+#define TEMP_1		0X4E
+#define TEMP_2		0X4F
+#define TEST_LNA	0X58
+#define TEST_PA_1	0x5A
+#define TEST_PA_2	0x5C
+#define TEST_DAGC	0x6F
+#define TEST_AFC	0x71
+//DATA
+#define OPMODE_SLEEP	
+#define OPMODE_STANDBY	
+#define OPMODE_FS	
+#define OPMODE_RX	
+#define OPMODE_TX	
+#define OPMODE_LISTEN
+#define OPMODE_ABORT_LISTEN
+#define DATA_MOD_FSK_PACKET
+#define BITRATE_H_4800
+#define BITRATE_L_4800
+#define F_DEV_H_5K	0X00
+#define F_DEV_L_5K	0X52
+#define FRF_H_915M	0X
+#define FRF_M_915M	0X
+#define FRF_L_915M	0X
+#define OSC1		0X
+#define AFC_CTRL	0X
+#define LISTEN1		0X
+#define LISTEN2		0X
+#define LISTEN3		0X
+#define VERSION		0X
+#define PA_LEVEL	0X
+#define PA_RAMP		0X
+#define OCP		0X
+#define LNA		0X
+#define RX_BW		0X
+#define AFC_BW		0X
+#define OOK_PEAK	0X
+#define OOK_AVG		0X
+#define OOK_FIX		0X
+#define AFC_FEI		0X
+#define AFC_H		0X
+#define AFC_L		0X
+#define FEI_H		0X
+#define FEI_L		0X
+#define FEI_L		0X
+#define RSSI_CONFIG	0X
+#define RSSI_VALUE	0X
+#define DIO_MAP_1	0X
+#define DIO_MAP_2	0X
+#define IRQ_FLAGS_1	0X
+#define IRQ_FLAGS_2	0X
+#define	RSSI_THRESHOLD	0X
+#define RX_TIMEOUT_1	0X
+#define RX_TIMEOUT_2	0X
+#define PREAMBLE_H	0X
+#define PREAMBLE_L	0X
+#define SYNC_CONFIG	0X
+#define SYNC_VALUE_1	0X
+#define SYNC_VALUE_8	0X
+#define PACKET_CONFIG_1	0X
+#define PAYLOAD_LENGTH	0X
+#define NODE_ADDRS	0X
+#define BRODCAST_ADDRS	0X
+#define AUTO_MODES	0X
+#define FIFO_THRESH	0X
+#define PACKET_CONFIG_2	0X
+#define AES_KEY_ADDR_H	0X
+#define AES_KEY_ADDR_l	0X
+#define TEMP_1		0X
+#define TEMP_2		0X
+#define TEST_LNA	0X
+#define TEST_PA_1	0x
+#define TEST_PA_2	0x
+#define TEST_DAGC	0x
+#define TEST_AFC	0x
 
 ////////FUCNTION DECLARATIONS////////
 void tx_when_ready(uint8_t, char, char, char, char);
